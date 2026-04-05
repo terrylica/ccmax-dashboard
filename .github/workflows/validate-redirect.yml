@@ -1,7 +1,9 @@
 name: Validate redirect target
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+    - cron: '15 * * * *'  # Every hour at :15
+  push:
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
@@ -10,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract current redirect target
+      - name: Extract redirect target from index.html
         id: current
         run: |
           TARGET=$(grep -oP 'url=\K[^"]+' index.html)
@@ -21,15 +23,24 @@ jobs:
         run: |
           STATUS=$(curl -sI https://terrylica.github.io/ccmax-dashboard/ -o /dev/null -w '%{http_code}')
           echo "Pages HTTP status: $STATUS"
-          [ "$STATUS" = "200" ] || exit 1
+          [ "$STATUS" = "200" ] || { echo "FAIL: Pages returned $STATUS"; exit 1; }
 
-      - name: Verify meta refresh tag exists
+      - name: Verify meta refresh tag present
         run: |
           BODY=$(curl -s https://terrylica.github.io/ccmax-dashboard/)
-          echo "$BODY" | grep -q 'http-equiv="refresh"' || { echo "FAIL: no meta refresh found"; exit 1; }
+          echo "$BODY" | grep -q 'http-equiv="refresh"' || { echo "FAIL: no meta refresh tag"; exit 1; }
           echo "PASS: meta refresh tag present"
+
+      - name: Verify target IP format is valid
+        run: |
+          TARGET="${{ steps.current.outputs.target }}"
+          echo "$TARGET" | grep -qE '^http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || { echo "FAIL: target '$TARGET' is not a valid IP:port URL"; exit 1; }
+          echo "PASS: target format valid"
 
       - name: Report
         run: |
+          echo "============================="
           echo "Redirect target: ${{ steps.current.outputs.target }}"
-          echo "Validation: PASSED"
+          echo "Pages URL: https://terrylica.github.io/ccmax-dashboard/"
+          echo "Validation: ALL CHECKS PASSED"
+          echo "============================="
